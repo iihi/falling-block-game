@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>落ち物ブロックゲーム</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: monospace; color: #fff; gap: 12px; }
+h1 { font-size: 20px; letter-spacing: 2px; color: #00d4ff; }
+#score-bar { display: flex; gap: 24px; font-size: 14px; color: #aaa; }
+#score-bar span { font-weight: bold; color: #fff; }
+canvas { border: 1px solid #333; border-radius: 6px; background: #0a0a12; display: block; }
+#controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+button { font-size: 13px; padding: 6px 18px; cursor: pointer; background: #1a1a2e; color: #fff; border: 1px solid #444; border-radius: 6px; }
+button:hover { background: #2a2a4e; }
+#msg { font-size: 13px; color: #888; text-align: center; }
+</style>
+</head>
+<body>
+<h1>FALLING BLOCKS</h1>
+<div id="score-bar">
+  スコア: <span id="sc">0</span>　レベル: <span id="lv">1</span>　ライン: <span id="ln">0</span>
+</div>
+<canvas id="c" width="200" height="400"></canvas>
+<div id="controls">
+  <button id="btn-start">スタート</button>
+  <button id="btn-left">◀</button>
+  <button id="btn-right">▶</button>
+  <button id="btn-rotate">↻ 回転</button>
+  <button id="btn-down">▼ 落とす</button>
+</div>
+<p id="msg">「スタート」を押してください。キーボード: ←→↑↓</p>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const COLS = 10, ROWS = 20, SZ = 20;
+
+const PIECES = [
+  { shape: [[1,1,1,1]], color: '#00d4ff' },
+  { shape: [[1,1],[1,1]], color: '#ffd700' },
+  { shape: [[0,1,0],[1,1,1]], color: '#cc44ff' },
+  { shape: [[1,0,0],[1,1,1]], color: '#ff8800' },
+  { shape: [[0,0,1],[1,1,1]], color: '#3366ff' },
+  { shape: [[0,1,1],[1,1,0]], color: '#00cc66' },
+  { shape: [[1,1,0],[0,1,1]], color: '#ff3355' },
+];
+
+let board, cur, cx, cy, score, level, lines, timer, running, gameOver;
+
+function newBoard() { return Array.from({length: ROWS}, () => Array(COLS).fill(0)); }
+function randPiece() { const p = PIECES[Math.floor(Math.random()*PIECES.length)]; return { shape: p.shape.map(r=>[...r]), color: p.color }; }
+function rotate(shape) { const R=shape.length,C=shape[0].length,out=Array.from({length:C},()=>Array(R).fill(0)); for(let r=0;r<R;r++)for(let c=0;c<C;c++)out[c][R-1-r]=shape[r][c]; return out; }
+function valid(shape,x,y) { for(let r=0;r<shape.length;r++)for(let c=0;c<shape[r].length;c++){if(!shape[r][c])continue;const nx=x+c,ny=y+r;if(nx<0||nx>=COLS||ny>=ROWS)return false;if(ny>=0&&board[ny][nx])return false;}return true; }
+
+function place() {
+  for(let r=0;r<cur.shape.length;r++)for(let c=0;c<cur.shape[r].length;c++)if(cur.shape[r][c]&&cy+r>=0)board[cy+r][cx+c]=cur.color;
+  let cleared=0;
+  for(let r=ROWS-1;r>=0;r--)if(board[r].every(v=>v)){board.splice(r,1);board.unshift(Array(COLS).fill(0));cleared++;r++;}
+  if(cleared){score+=[0,100,300,500,800][cleared]*level;lines+=cleared;level=Math.floor(lines/10)+1;}
+  document.getElementById('sc').textContent=score;
+  document.getElementById('lv').textContent=level;
+  document.getElementById('ln').textContent=lines;
+  spawnPiece();
+}
+
+function spawnPiece() {
+  cur=randPiece();cx=Math.floor((COLS-cur.shape[0].length)/2);cy=-cur.shape.length+1;
+  if(!valid(cur.shape,cx,cy+1)){gameOver=true;running=false;clearInterval(timer);draw();document.getElementById('msg').textContent=`ゲームオーバー！スコア: ${score}`;}
+}
+
+function drawCell(c,r,color){if(r<0)return;ctx.fillStyle=color;ctx.fillRect(c*SZ+1,r*SZ+1,SZ-2,SZ-2);ctx.fillStyle='rgba(255,255,255,0.2)';ctx.fillRect(c*SZ+1,r*SZ+1,SZ-2,3);}
+
+function draw() {
+  ctx.fillStyle='#0a0a12';ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c])drawCell(c,r,board[r][c]);
+  if(cur)for(let r=0;r<cur.shape.length;r++)for(let c=0;c<cur.shape[r].length;c++)if(cur.shape[r][c])drawCell(cx+c,cy+r,cur.color);
+  ctx.strokeStyle='#1a1a2e';ctx.lineWidth=0.5;
+  for(let r=0;r<=ROWS;r++){ctx.beginPath();ctx.moveTo(0,r*SZ);ctx.lineTo(COLS*SZ,r*SZ);ctx.stroke();}
+  for(let c=0;c<=COLS;c++){ctx.beginPath();ctx.moveTo(c*SZ,0);ctx.lineTo(c*SZ,ROWS*SZ);ctx.stroke();}
+  if(gameOver){ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#fff';ctx.font='bold 18px monospace';ctx.textAlign='center';ctx.fillText('GAME OVER',canvas.width/2,canvas.height/2-10);ctx.font='13px monospace';ctx.fillText('Score: '+score,canvas.width/2,canvas.height/2+14);}
+}
+
+function startGame() {
+  board=newBoard();score=0;level=1;lines=0;gameOver=false;running=true;
+  document.getElementById('sc').textContent=0;document.getElementById('lv').textContent=1;document.getElementById('ln').textContent=0;
+  document.getElementById('msg').textContent='← → 移動　↑ 回転　↓ 高速落下';
+  clearInterval(timer);spawnPiece();draw();
+  function getSpeed(){return Math.max(100,800-(level-1)*70);}
+  function loop(){tick();timer=setTimeout(loop,getSpeed());}
+  loop();
+}
+
+function tick(){if(!running)return;if(valid(cur.shape,cx,cy+1)){cy++;}else{place();}draw();}
+
+document.getElementById('btn-start').addEventListener('click',startGame);
+document.getElementById('btn-left').addEventListener('click',()=>{if(running&&valid(cur.shape,cx-1,cy)){cx--;draw();}});
+document.getElementById('btn-right').addEventListener('click',()=>{if(running&&valid(cur.shape,cx+1,cy)){cx++;draw();}});
+document.getElementById('btn-rotate').addEventListener('click',()=>{if(!running)return;const r=rotate(cur.shape);if(valid(r,cx,cy)){cur.shape=r;draw();}});
+document.getElementById('btn-down').addEventListener('click',()=>{if(!running)return;while(valid(cur.shape,cx,cy+1))cy++;place();draw();});
+document.addEventListener('keydown',e=>{if(!running)return;if(e.key==='ArrowLeft'&&valid(cur.shape,cx-1,cy)){cx--;draw();}if(e.key==='ArrowRight'&&valid(cur.shape,cx+1,cy)){cx++;draw();}if(e.key==='ArrowUp'){const r=rotate(cur.shape);if(valid(r,cx,cy)){cur.shape=r;draw();}}if(e.key==='ArrowDown'){while(valid(cur.shape,cx,cy+1))cy++;place();draw();}});
+draw();
+</script>
+</body>
+</html>
